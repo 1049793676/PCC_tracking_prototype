@@ -1,0 +1,6 @@
+[calibration]
+axial_signs = [1, 1]
+bend_sides = [1, 1]
+version = 4
+imu_signs = [-1, 1]
+motor_signs = [-1, 1]
