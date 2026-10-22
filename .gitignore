@@ -1,0 +1,25 @@
+# Local hardware references and generated assets
+Lumimoon-Tech-RobotDuck-main/Lumimoon-Tech-RobotDuck-main/
+docs/
+*.stl
+*.STL
+*.step
+*.STEP
+*.stp
+*.STP
+*.pdf
+*.PDF
+*.md
+*.MD
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.png
+*.PNG
+*.xlsx
+*.csv
+*.DWG
+*.PcbDoc
+*.SchDoc
+.DS_Store
