@@ -19,8 +19,8 @@ GM = GLMakie
 PORT = isempty(ARGS) ? "COM8" : ARGS[1]
 BAUD = 115200
 IMU_IDS = (1, 2)
-FIRST_SEGMENT_IMU_ID = 2
-SECOND_SEGMENT_IMU_ID = 1
+FIRST_SEGMENT_IMU_ID = 1
+SECOND_SEGMENT_IMU_ID = 2
 AXIS_NAMES = ("X", "Y", "Z")
 AXIS_COLORS = (:red, :green, :blue)
 AXIS_LENGTH = 1.0f0
@@ -35,7 +35,7 @@ ORIGINS = Dict(
     :second_absolute => GM.Point3f(0.0, 0.0, 0.0),
     :second_relative => GM.Point3f(0.0, 0.0, 0.0),
 )
-# Keep only the first IMU's starting orientation as the reference for
+# Keep only the first segment IMU's starting orientation as the reference for
 # removing shared motion. The displayed axes remain the IMUs' own axes.
 initial_first_rotation = nothing
 initial_second_rotation = nothing
@@ -73,9 +73,9 @@ axis_observables = Dict(
     for view in (:first_absolute, :second_absolute, :second_relative), axis in 1:3)
 
 for (view, label, linestyle) in (
-        (:first_absolute, "第一段 IMU2 原始绝对姿态", :solid),
-        (:second_absolute, "第二段 IMU1 原始绝对姿态", :solid),
-        (:second_relative, "第二段 IMU1 去除共同旋转", :dash))
+        (:first_absolute, "第一段 IMU1 原始绝对姿态", :solid),
+        (:second_absolute, "第二段 IMU2 原始绝对姿态", :solid),
+        (:second_relative, "第二段 IMU2 去除共同旋转", :dash))
     for axis in 1:3
         lines!(ax, axis_observables[(view, axis)];
             color=AXIS_COLORS[axis],
@@ -169,7 +169,7 @@ function update_attitude!(records)
         compensation_difference = IMU.rotation_step_deg(second_raw, second_compensated)
 
         angles_status.text[] = @sprintf(
-            "相对启动：IMU2 原始 %.1f° / 显示 %.1f°；IMU1 原始 %.1f° / 显示 %.1f°；第二段实线与虚线差 %.1f°",
+            "相对启动：IMU1 原始 %.1f° / 显示 %.1f°；IMU2 原始 %.1f° / 显示 %.1f°；第二段实线与虚线差 %.1f°",
             first_received_change, first_displayed_change,
             second_received_change, second_displayed_change,
             compensation_difference)

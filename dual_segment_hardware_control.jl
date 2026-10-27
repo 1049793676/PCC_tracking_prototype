@@ -15,11 +15,11 @@ const CALIBRATION_PATH = joinpath(@__DIR__, "two_segment_hardware_calibration_v3
 const IMU_MOUNT_PATH = joinpath(@__DIR__, "two_segment_imu_mount_v3.toml")
 
 Base.@kwdef struct Config
-    first::IMU.Config = IMU.Config(port="COM8", imu_id=2, servo_id=1, axial_servo_id=2,
+    first::IMU.Config = IMU.Config(port="COM8", imu_id=1, servo_id=1, axial_servo_id=2,
         bend_motor_sign=-1, imu_bend_sign=-1, axial_rotation_sign=1,
         command_min=500, command_max=2500, max_speed=1000, max_command_rate=2500.0,
         zero_kp=5.0, zero_max_speed=200)
-    second::IMU.Config = IMU.Config(port="COM8", imu_id=1, servo_id=3,
+    second::IMU.Config = IMU.Config(port="COM8", imu_id=2, servo_id=3,
         axial_servo_id=4, bend_motor_sign=-1, imu_bend_sign=-1,
         axial_rotation_sign=-1, kp=5.0, command_min=500, command_max=2500,
         max_speed=400, max_command_rate=600.0, zero_kp=5.0, zero_max_speed=200)
@@ -82,8 +82,8 @@ function validate(c::Config, adapter)
     IMU.validate(c.second, adapter)
     c.first.port == c.second.port && c.first.baud == c.second.baud ||
         error("两只 IMU 和四路舵机必须通过同一块 ESP32 的 USB 串口通信")
-    c.first.imu_id == 2 && c.second.imu_id == 1 ||
-        error("接线约定：第一段 IMU2(GPIO10/11)，第二段 IMU1(GPIO8/9)")
+    c.first.imu_id == 1 && c.second.imu_id == 2 ||
+        error("接线约定：第一段 IMU1(GPIO8/9)，第二段 IMU2(GPIO10/11)")
     (c.first.servo_id, c.first.axial_servo_id, c.second.servo_id,
      c.second.axial_servo_id) == (1, 2, 3, 4) ||
         error("舵机通道必须依次为 CH1、CH2、CH3、CH4")
@@ -417,7 +417,7 @@ function make_initial_view(prepared, c::Config)
     panel = GM.GridLayout(); fig[1, 2] = panel
     status = GM.Observable("观察 IMU 与实体弯曲方向；已有安装标定时可点击 IMU 自动回直")
     values = GM.Observable("CH1=1500  CH2=1500  CH3=1500  CH4=1500")
-    angles = GM.Observable("等待 IMU2（第一段）与 IMU1（第二段）")
+    angles = GM.Observable("等待 IMU1（第一段）与 IMU2（第二段）")
     GM.Label(panel[1, 1], status; tellwidth=false)
     GM.Label(panel[2, 1], values; tellwidth=false)
     GM.Label(panel[3, 1], angles; tellwidth=false)
@@ -1000,7 +1000,7 @@ function make_live_view(plans, c::Config; send_servo=true,
     status = GM.Observable(send_servo ? "等待两只 IMU；请先点‘归零回直’" :
                              "观察模式：不会发送电机指令")
     values = GM.Observable("CH1=1500  CH2=1500  CH3=1500  CH4=1500")
-    angles = GM.Observable("等待 IMU2 与 IMU1")
+    angles = GM.Observable("等待 IMU1 与 IMU2")
     GM.Label(panel[1, 1], status; tellwidth=false)
     zero = GM.Button(panel[2, 1]; label="第一步：两段归零回直", tellwidth=false)
     rectangle = GM.Button(panel[3, 1]; label="跟踪矩形", tellwidth=false)
