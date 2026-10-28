@@ -8,6 +8,7 @@ using LinearAlgebra: cross, dot, norm, I
 import GLMakie as GM
 import TOML
 include(joinpath(@__DIR__, "pcc_reference_profiles.jl"))
+include(joinpath(@__DIR__, "pcc_fixed_axial_fit.jl"))
 
 # Windows 上列出 COM 设备；当前按用户确认的第二个 COM 连接 ESP32 的 USB CDC。
 function list_com_ports()
@@ -782,7 +783,7 @@ function make_two_segment_feedback_plot(; first_target_deg::Real=0.0,
     if circle_state !== nothing
         path_axis = GM.Axis3(figure[1:2, 3], xlabel="X (mm)", ylabel="Y (mm)",
                              zlabel="Z (mm)", aspect=:data,
-                             title="三维 PCC：蓝色目标 / 橙色绝对 IMU 姿态拟合")
+                             title="三维 PCC：蓝色目标 / 橙色重力拟合 + 指令轴向角")
         diagnostic_panel = GM.GridLayout()
         figure[3, 3] = diagnostic_panel
         attitude_title = GM.Observable("姿态误差：等待 IMU 数据")
@@ -862,7 +863,7 @@ function make_two_segment_feedback_plot(; first_target_deg::Real=0.0,
             draw_frame_axes!(imu_frame_axes, section, position,
                              alignments[section] * imu_rotation(quaternions[section]))
         end
-        attitude_title[] = "姿态误差：第一段 0° / 第二段 0°；拟合残差 0°"
+        attitude_title[] = "姿态误差：第一段 0° / 第二段 0°；重力方向残差 0°"
         drive_diagnostic[] = "四电机姿态诊断：直态已记录，等待 IMU 数据"
     end
     function update_tip(bends, axial, reference_bends, reference_axial,
@@ -875,11 +876,11 @@ function make_two_segment_feedback_plot(; first_target_deg::Real=0.0,
                               imu_rotation(imu_quaternions[section]), 2)
         fit = fit_override !== nothing ? fit_override :
               imu_sensor_frames === nothing ? nothing :
-            (sequential_fit ? fit_pcc_to_imu_orientations_sequential :
-                              fit_pcc_to_imu_orientations)(
+            fit_pcc_fixed_axial(
                 ntuple(section -> imu_sensor_frames[section] *
                                   transpose(sensor_to_model_axes(section)), 2),
-                active_circle_state[].base_z_offset, fitted_parameters[])
+                ntuple(section -> imu_world_alignment[][section] * [0., 0., 1.], 2),
+                active_circle_state[].base_z_offset, fitted_parameters[], axial)
         if fit !== nothing
             candidate = [fit.bend..., fit.axial...]
             if fit_override === nothing &&
@@ -903,13 +904,13 @@ function make_two_segment_feedback_plot(; first_target_deg::Real=0.0,
                 drive_diagnostic[] =
                     "顺序：弯曲电机1  /  弯曲电机2  /  轴向通道1  /  轴向通道2\n" *
                     "PCC目标：" * fmt(target_parameters) * "\n" *
-                    "IMU等效反求：" * fmt(measured_parameters) * "\n" *
-                    "角度差：  " * fmt(parameter_errors) * "\n" *
+                    "重力拟合弯曲 / 指令轴向：" * fmt(measured_parameters) * "\n" *
+                    "目标减估计/指令：  " * fmt(parameter_errors) * "\n" *
                     "轴向已发指令：通道1 $(commanded_axial_pulses[1]) / 通道2 $(commanded_axial_pulses[2]) μs\n" *
                     "轴向指令角：" * fmt(axial) * "（由脉宽换算，非舵机实测）\n" *
                     "弯曲目标 ticks：电机1 " * direction(1) * "  /  电机2 " * direction(2) * "\n" *
-                    (reliable ? "弯曲角用于闭环；轴向由 PCC 目标直接给定" :
-                                "拟合残差较大；IMU 等效轴向角不代表实际电机角")
+                    (reliable ? "弯曲由重力拟合闭环；轴向固定为已发指令角" :
+                                "重力方向残差较大；请检查倾斜测量与机械零位")
             end
         end
         render || return fit
@@ -942,7 +943,7 @@ function make_two_segment_feedback_plot(; first_target_deg::Real=0.0,
                 end
             end
             if length(pose_error) == 2
-                attitude_title[] = "姿态误差：一段 $(round(pose_error[1]; digits=1))° / 二段 $(round(pose_error[2]; digits=1))°；拟合残差 $(round.(fit.mismatch_deg; digits=1))°"
+                attitude_title[] = "姿态误差：一段 $(round(pose_error[1]; digits=1))° / 二段 $(round(pose_error[2]; digits=1))°；重力方向残差 $(round.(fit.mismatch_deg; digits=1))°"
             end
         end
         GM.autolimits!(path_axis)
@@ -1792,7 +1793,7 @@ function dual_imu_feedback!(sp, cal1, cal2;
                         continue
                     end
                     if maximum(result.mismatch_deg) > 30.0
-                        plot.readout[] = "IMU 与 PCC 姿态拟合残差 $(round.(result.mismatch_deg; digits=1))° 超过 30°；轨迹尚未完成，已保护停止并保持弯曲电机当前位置"
+                        plot.readout[] = "IMU 与 PCC 姿态重力方向残差 $(round.(result.mismatch_deg; digits=1))° 超过 30°；轨迹尚未完成，已保护停止并保持弯曲电机当前位置"
                         plot.status[] = "PCC 姿态拟合不可靠，正在正常结束并保持位置"
                         state[] = stopping
                         break
@@ -2681,8 +2682,10 @@ function pcc_imu_manual_fit_test!(sp;
                     alignment[][section] * filtered_frames[section], 2)
                 model_frames = ntuple(section ->
                     sensor_frames[section] * transpose(axes_map(section)), 2)
-                fit = fit_pcc_to_imu_orientations_sequential(
-                    model_frames, base_z_offset, fit_previous)
+                fit = fit_pcc_fixed_axial(model_frames,
+                    ntuple(section -> alignment[][section] * [0., 0., 1.], 2),
+                    base_z_offset, fit_previous,
+                    ntuple(section -> (axial_sent[section]-1500)*300/2000, 2))
                 fit_previous .= [fit.bend..., fit.axial...]
                 now - last_render >= refresh_s || continue
                 rope = [R_DRIVE*deg2rad(abs(fit.bend[i])) for i in 1:2]
@@ -2712,12 +2715,12 @@ function pcc_imu_manual_fit_test!(sp;
                     imu_orientation_distance_deg(qs[2], baseline_pair.imu2))
                 if now - last_diagnostics >= 0.5
                     diagnostics[] =
-                        "单独直态对齐后的拟合残差：第一段 $(round(fit.mismatch_deg[1];digits=1))°，第二段 $(round(fit.mismatch_deg[2];digits=1))°\n" *
+                        "单独直态对齐后的重力方向残差：第一段 $(round(fit.mismatch_deg[1];digits=1))°，第二段 $(round(fit.mismatch_deg[2];digits=1))°\n" *
                         "末端轴向夹角（半透明 IMU +X / 不透明 PCC +X）：$(round.(tangent_gaps;digits=1))°\n" *
                         "原始姿态相对启动基线的总转角 IMU1/IMU2：$(round.(baseline_turns;digits=1))°\n" *
                         "两只 IMU 同名轴夹角 X/Y/Z：原始绝对 $(raw_gaps)°；直态对齐后 $(aligned_gaps)°\n" *
                         "原始 IMU +X 方向向量：IMU1 $(raw_x_axes[1])；IMU2 $(raw_x_axes[2])\n" *
-                        "反求弯曲角 $(round.(fit.bend;digits=1))°；反求轴向角 $(round.(fit.axial;digits=1))°\n" *
+                        "反求弯曲角 $(round.(fit.bend;digits=1))°；指令约束轴向角 $(round.(fit.axial;digits=1))°\n" *
                         "轴向已发脉宽 $(Tuple(axial_sent)) μs；双 IMU 时间差 $(pair.skew_us) μs"
                     last_diagnostics = now
                 end

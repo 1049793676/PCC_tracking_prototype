@@ -165,8 +165,8 @@ function compute_trajectory(; n_steps::Integer=N_STEPS, shape::Symbol=:rectangle
     base_z_offset = -150.0
     initial_controls = zeros(2N_SEGMENTS)
     target_y = 300.0
-    center_x, center_z = 0.0, -500.0
-    half_x, half_z = 40.0, 40.0
+    center_x, center_z = 0.0, -400.0
+    half_x, half_z = 60.0, 60.0
     shape_trajectory = if shape == :rectangle
         p1 = Point3f(center_x-half_x, target_y, center_z-half_z)
         p2 = Point3f(center_x+half_x, target_y, center_z-half_z)
